@@ -5,13 +5,13 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     // Module
-    const zig_wav = b.dependency("zig_wav", .{});
+    const lightmix_wav = b.dependency("lightmix_wav", .{});
     const exe_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
-    exe_mod.addImport("zig_wav", zig_wav.module("zig_wav"));
+    exe_mod.addImport("lightmix_wav", lightmix_wav.module("lightmix_wav"));
 
     // Executable
     const exe = b.addExecutable(.{

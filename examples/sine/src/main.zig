@@ -1,12 +1,12 @@
 const std = @import("std");
-const zig_wav = @import("zig_wav");
+const lightmix_wav = @import("lightmix_wav");
 const allocator = std.heap.page_allocator;
 
 pub fn main() !void {
     const data: []const u8 = @embedFile("./assets/sine.wav");
     var stream = std.io.fixedBufferStream(data);
 
-    var wav_decoder = try zig_wav.decoder(stream.reader());
+    var wav_decoder = try lightmix_wav.decoder(stream.reader());
 
     std.debug.print("{d}\n", .{wav_decoder.sampleRate()});
     std.debug.print("{d}\n", .{wav_decoder.channels()});
