@@ -1,6 +1,6 @@
 .{
-    .name = .zig_wav,
-    .fingerprint = 0xd6cd4a1a38920f82,
+    .name = .lightmix_wav,
+    .fingerprint = 0x8ae6dbf396ee8a20,
     .version = "0.1.0",
 
     .dependencies = .{},
