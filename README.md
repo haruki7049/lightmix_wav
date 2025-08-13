@@ -1,4 +1,4 @@
-# zig-wav
+# lightmix-wav
 
 Simple, efficient wav decoding + encoding in Zig.
 
