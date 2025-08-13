@@ -1,0 +1,14 @@
+.{
+    .name = .zig_wav,
+    .fingerprint = 0xd6cd4a1a38920f82,
+    .version = "0.1.0",
+
+    .dependencies = .{},
+
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "LICENSE",
+    },
+}
