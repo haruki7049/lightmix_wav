@@ -5,7 +5,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     // Library module declaration
-    const lib_mod = b.addModule("zig_wav", .{
+    const lib_mod = b.addModule("lightmix_wav", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
@@ -14,7 +14,7 @@ pub fn build(b: *std.Build) void {
     // Library declaration
     const lib = b.addLibrary(.{
         .linkage = .static,
-        .name = "zig_wav",
+        .name = "lightmix_wav",
         .root_module = lib_mod,
     });
 
