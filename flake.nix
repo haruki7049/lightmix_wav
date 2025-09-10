@@ -23,17 +23,6 @@
 
       perSystem =
         { pkgs, lib, ... }:
-        let
-          lightmix = pkgs.stdenv.mkDerivation {
-            name = "lightmix";
-            src = lib.cleanSource ./.;
-            doCheck = true;
-
-            nativeBuildInputs = [
-              pkgs.zig_0_14.hook
-            ];
-          };
-        in
         {
           treefmt = {
             projectRootFile = ".git/config";
@@ -58,26 +47,14 @@
             programs.shfmt.enable = true;
           };
 
-          packages = {
-            inherit lightmix;
-            default = lightmix;
-          };
-
-          checks = {
-            inherit lightmix;
-          };
-
           devShells.default = pkgs.mkShell {
             packages = [
-              # Zig
-              pkgs.zig_0_14
+              # Compiler
+              pkgs.zig_0_15
+
+              # LSP
               pkgs.zls
-
-              # Nix
               pkgs.nil
-
-              # Music Player
-              pkgs.sox # Use this command as: `play result.wav`
             ];
           };
         };
