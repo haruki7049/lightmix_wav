@@ -225,22 +225,24 @@ pub fn decoder(reader: anytype) !Decoder(@TypeOf(reader)) {
 pub fn Encoder(
     comptime T: type,
     comptime WriterType: type,
-    comptime SeekableType: type,
+    // comptime SeekableType: type,
 ) type {
     return struct {
         const Self = @This();
 
-        const Error = WriterType.Error || SeekableType.SeekError || error{ InvalidArgument, Overflow };
+        const Error = WriterType.Error ||
+            // SeekableType.SeekError ||
+            error{ InvalidArgument, Overflow };
 
         writer: WriterType,
-        seekable: SeekableType,
+        // seekable: SeekableType,
 
         fmt: FormatChunk,
         data_size: usize = 0,
 
         pub fn init(
             writer: WriterType,
-            seekable: SeekableType,
+            // seekable: SeekableType,
             sample_rate: usize,
             channels: usize,
         ) Error!Self {
@@ -268,7 +270,7 @@ pub fn Encoder(
 
             var self = Self{
                 .writer = writer,
-                .seekable = seekable,
+                // .seekable = seekable,
                 .fmt = .{
                     .code = switch (T) {
                         u8, i16, i24 => .pcm,
@@ -291,6 +293,8 @@ pub fn Encoder(
         /// IEEE float. Multi-channel samples must be interleaved: samples for time `t` for all channels
         /// are written to `t * channels`.
         pub fn write(self: *Self, comptime S: type, buf: []const S) Error!void {
+            try self.writeHeader();
+
             switch (T) {
                 u8,
                 i16,
@@ -331,23 +335,30 @@ pub fn Encoder(
             try self.writer.writeAll("data");
             try self.writer.writeInt(u32, @intCast(self.data_size), .little);
         }
-
-        /// Must be called once writing is complete. Writes total size to file header.
-        pub fn finalize(self: *Self) Error!void {
-            try self.seekable.seekTo(0);
-            try self.writeHeader();
-        }
     };
 }
 
 pub fn encoder(
     comptime T: type,
     writer: anytype,
-    seekable: anytype,
+    // seekable: anytype,
     sample_rate: usize,
     channels: usize,
-) !Encoder(T, @TypeOf(writer), @TypeOf(seekable)) {
-    return Encoder(T, @TypeOf(writer), @TypeOf(seekable)).init(writer, seekable, sample_rate, channels);
+) !Encoder(
+    T,
+    @TypeOf(writer),
+    // @TypeOf(seekable),
+) {
+    return Encoder(
+        T,
+        @TypeOf(writer),
+        // @TypeOf(seekable),
+    ).init(
+        writer,
+        // seekable,
+        sample_rate,
+        channels,
+    );
 }
 
 test "pcm(bits=8) sample_rate=22050 channels=1" {
@@ -504,7 +515,7 @@ fn testEncodeDecode(comptime T: type, comptime sample_rate: usize) !void {
     defer std.testing.allocator.free(buf);
 
     var stream = std.io.fixedBufferStream(buf);
-    var wav_encoder = try encoder(T, stream.writer(), stream.seekableStream(), sample_rate, 1);
+    var wav_encoder = try encoder(T, stream.writer(), sample_rate, 1);
 
     var phase: f32 = 0.0;
     var i: usize = 0;
@@ -513,7 +524,7 @@ fn testEncodeDecode(comptime T: type, comptime sample_rate: usize) !void {
         phase += increment;
     }
 
-    try wav_encoder.finalize();
+    // try wav_encoder.finalize();
     try stream.seekTo(0);
 
     var wav_decoder = try decoder(stream.reader());
