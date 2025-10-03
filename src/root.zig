@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const sample = @import("sample.zig");
+
 const expectEqual = std.testing.expectEqual;
 const expectError = std.testing.expectError;
 
@@ -59,7 +60,8 @@ const FormatChunk = packed struct {
                 return error.Unsupported;
             },
         }
-        if (self.bytes_per_second != self.bits / 8 * self.sample_rate * self.channels) {
+        const expected_bps: u32 = @intCast((self.bits / 8) * self.sample_rate * self.channels);
+        if (self.bytes_per_second != expected_bps) {
             std.log.debug("invalid bytes_per_second", .{});
             return error.InvalidValue;
         }
@@ -80,15 +82,15 @@ pub fn Decoder(comptime InnerReaderType: type) type {
         data_size: usize,
 
         pub fn sampleRate(self: *const Self) usize {
-            return self.fmt.sample_rate;
+            return @intCast(self.fmt.sample_rate);
         }
 
         pub fn channels(self: *const Self) usize {
-            return self.fmt.channels;
+            return @intCast(self.fmt.channels);
         }
 
         pub fn bits(self: *const Self) usize {
-            return self.fmt.bits;
+            return @intCast(self.fmt.bits);
         }
 
         /// Number of samples remaining.
@@ -104,17 +106,19 @@ pub fn Decoder(comptime InnerReaderType: type) type {
         fn init(inner_reader: InnerReaderType) Error!Self {
             comptime std.debug.assert(builtin.target.cpu.arch.endian() == .little);
 
-            var counting_reader = ReaderType{ .child_reader = inner_reader };
-            var reader = counting_reader.reader();
+            const counting_reader = std.io.countingReader(inner_reader);
 
-            var chunk_id = try reader.readBytesNoEof(4);
+            var chunk_id = try inner_reader.readBytesNoEof(4);
             if (!std.mem.eql(u8, "RIFF", &chunk_id)) {
                 std.log.debug("not a RIFF file", .{});
                 return error.InvalidFileType;
             }
-            const total_size = try std.math.add(u32, try reader.readInt(u32, .little), 8);
 
-            chunk_id = try reader.readBytesNoEof(4);
+            const file_size_le = try inner_reader.readInt(u32, .little);
+            // total_size is file size + 8 per RIFF spec
+            const total_size: usize = @as(usize, @intCast(file_size_le)) + 8;
+
+            chunk_id = try inner_reader.readBytesNoEof(4);
             if (!std.mem.eql(u8, "WAVE", &chunk_id)) {
                 std.log.debug("not a WAVE file", .{});
                 return error.InvalidFileType;
@@ -125,16 +129,16 @@ pub fn Decoder(comptime InnerReaderType: type) type {
             var data_size: usize = 0; // Bytes in data chunk.
             var chunk_size: usize = 0;
             while (true) {
-                chunk_id = try reader.readBytesNoEof(4);
-                chunk_size = try reader.readInt(u32, .little);
+                chunk_id = try inner_reader.readBytesNoEof(4);
+                chunk_size = try inner_reader.readInt(u32, .little);
 
                 if (std.mem.eql(u8, "fmt ", &chunk_id)) {
-                    fmt = try FormatChunk.parse(reader, chunk_size);
+                    fmt = try FormatChunk.parse(inner_reader, chunk_size);
                     try fmt.?.validate();
 
                     // TODO Support 32-bit aligned i24 blocks.
-                    const bytes_per_sample = fmt.?.block_align / fmt.?.channels;
-                    if (bytes_per_sample * 8 != fmt.?.bits) {
+                    const bytes_per_sample = @as(usize, @intCast(fmt.?.block_align)) / @as(usize, @intCast(fmt.?.channels));
+                    if (bytes_per_sample * 8 != @as(usize, @intCast(fmt.?.bits))) {
                         return error.Unsupported;
                     }
                 } else if (std.mem.eql(u8, "data", &chunk_id)) {
@@ -143,7 +147,7 @@ pub fn Decoder(comptime InnerReaderType: type) type {
                     break;
                 } else {
                     std.log.info("skipping unrecognized chunk {s}", .{chunk_id});
-                    try reader.skipBytes(chunk_size, .{});
+                    try inner_reader.skipBytes(chunk_size, .{});
                 }
             }
 
@@ -161,7 +165,7 @@ pub fn Decoder(comptime InnerReaderType: type) type {
             if (data_start + data_size > total_size) {
                 return error.InvalidSize;
             }
-            if (data_size % (fmt.?.channels * fmt.?.bits / 8) != 0) {
+            if (data_size % (@as(usize, @intCast(fmt.?.channels)) * @as(usize, @intCast(fmt.?.bits)) / 8) != 0) {
                 return error.InvalidSize;
             }
 
@@ -201,15 +205,12 @@ pub fn Decoder(comptime InnerReaderType: type) type {
             const limit = @min(buf.len, self.remaining());
             var i: usize = 0;
             while (i < limit) : (i += 1) {
-                buf[i] = sample.convert(
-                    T,
-                    // Propagate EndOfStream error on truncation.
-                    switch (@typeInfo(S)) {
-                        .float => try readFloat(S, reader),
-                        .int => try reader.readInt(S, .little),
-                        else => @compileError(bad_type),
-                    },
-                );
+                const value = switch (@typeInfo(S)) {
+                    .float => try readFloat(S, reader),
+                    .int => try reader.readInt(S, .little),
+                    else => @compileError(bad_type),
+                };
+                buf[i] = sample.convert(T, value);
             }
             return i;
         }
@@ -225,24 +226,22 @@ pub fn decoder(reader: anytype) !Decoder(@TypeOf(reader)) {
 pub fn Encoder(
     comptime T: type,
     comptime WriterType: type,
-    // comptime SeekableType: type,
+    comptime SeekableType: type,
 ) type {
     return struct {
         const Self = @This();
 
-        const Error = WriterType.Error ||
-            // SeekableType.SeekError ||
-            error{ InvalidArgument, Overflow };
+        const Error = WriterType.Error || SeekableType.SeekError || error{ InvalidArgument, Overflow };
 
         writer: WriterType,
-        // seekable: SeekableType,
+        seekable: SeekableType,
 
         fmt: FormatChunk,
         data_size: usize = 0,
 
         pub fn init(
             writer: WriterType,
-            // seekable: SeekableType,
+            seekable: SeekableType,
             sample_rate: usize,
             channels: usize,
         ) Error!Self {
@@ -270,7 +269,7 @@ pub fn Encoder(
 
             var self = Self{
                 .writer = writer,
-                // .seekable = seekable,
+                .seekable = seekable,
                 .fmt = .{
                     .code = switch (T) {
                         u8, i16, i24 => .pcm,
@@ -293,14 +292,13 @@ pub fn Encoder(
         /// IEEE float. Multi-channel samples must be interleaved: samples for time `t` for all channels
         /// are written to `t * channels`.
         pub fn write(self: *Self, comptime S: type, buf: []const S) Error!void {
-            try self.writeHeader();
-
             switch (T) {
                 u8,
                 i16,
                 i24,
                 => {
                     for (buf) |x| {
+                        // writeInt expects a value of the same type parameter.
                         try self.writer.writeInt(T, sample.convert(T, x), .little);
                         self.data_size += @bitSizeOf(T) / 8;
                     }
@@ -317,6 +315,10 @@ pub fn Encoder(
         }
 
         fn writeHeader(self: *Self) Error!void {
+            try self.writeHeaderTo(self.writer);
+        }
+
+        fn writeHeaderTo(self: *Self, writer: anytype) Error!void {
             // Size of RIFF header + fmt id/size + fmt chunk + data id/size.
             const header_size: usize = 12 + 8 + @sizeOf(@TypeOf(self.fmt)) + 8;
 
@@ -324,16 +326,26 @@ pub fn Encoder(
                 return error.Overflow;
             }
 
-            try self.writer.writeAll("RIFF");
-            try self.writer.writeInt(u32, @intCast(header_size + self.data_size), .little); // Overwritten by finalize().
-            try self.writer.writeAll("WAVE");
+            try writer.writeAll("RIFF");
+            try writer.writeInt(u32, @intCast(header_size + self.data_size), .little); // Overwritten by finalize().
+            try writer.writeAll("WAVE");
 
-            try self.writer.writeAll("fmt ");
-            try self.writer.writeInt(u32, @sizeOf(@TypeOf(self.fmt)), .little);
-            try self.writer.writeStruct(self.fmt);
+            try writer.writeAll("fmt ");
+            try writer.writeInt(u32, @sizeOf(@TypeOf(self.fmt)), .little);
+            var fmt_buf: @TypeOf(self.fmt) = self.fmt;
+            try writer.writeAll(std.mem.asBytes(&fmt_buf));
 
-            try self.writer.writeAll("data");
-            try self.writer.writeInt(u32, @intCast(self.data_size), .little);
+            try writer.writeAll("data");
+            try writer.writeInt(u32, @intCast(self.data_size), .little);
+        }
+
+        /// Must be called once writing is complete. Writes total size to file header.
+        pub fn finalize(self: *Self) Error!void {
+            try self.seekable.seekTo(0);
+
+            // Create a fresh writer backed by the seekable stream so writes go at the start.
+            const new_writer = self.seekable.writer();
+            try self.writeHeaderTo(new_writer);
         }
     };
 }
@@ -341,26 +353,14 @@ pub fn Encoder(
 pub fn encoder(
     comptime T: type,
     writer: anytype,
-    // seekable: anytype,
+    seekable: anytype,
     sample_rate: usize,
     channels: usize,
-) !Encoder(
-    T,
-    @TypeOf(writer),
-    // @TypeOf(seekable),
-) {
-    return Encoder(
-        T,
-        @TypeOf(writer),
-        // @TypeOf(seekable),
-    ).init(
-        writer,
-        // seekable,
-        sample_rate,
-        channels,
-    );
+) !Encoder(T, @TypeOf(writer), @TypeOf(seekable)) {
+    return Encoder(T, @TypeOf(writer), @TypeOf(seekable)).init(writer, seekable, sample_rate, channels);
 }
 
+// Tests (kept identical in intent). Ensure test data files and `sample.zig` exist.
 test "pcm(bits=8) sample_rate=22050 channels=1" {
     const test_data: []const u8 = @embedFile("test_data/pcm8_22050_mono.wav");
     var stream = std.io.fixedBufferStream(test_data);
@@ -515,7 +515,7 @@ fn testEncodeDecode(comptime T: type, comptime sample_rate: usize) !void {
     defer std.testing.allocator.free(buf);
 
     var stream = std.io.fixedBufferStream(buf);
-    var wav_encoder = try encoder(T, stream.writer(), sample_rate, 1);
+    var wav_encoder = try encoder(T, stream.writer(), stream, sample_rate, 1);
 
     var phase: f32 = 0.0;
     var i: usize = 0;
@@ -524,7 +524,7 @@ fn testEncodeDecode(comptime T: type, comptime sample_rate: usize) !void {
         phase += increment;
     }
 
-    // try wav_encoder.finalize();
+    try wav_encoder.finalize();
     try stream.seekTo(0);
 
     var wav_decoder = try decoder(stream.reader());
