@@ -2,7 +2,7 @@
     .name = .sine,
     .version = "0.0.0",
     .fingerprint = 0xd96ef33f8fdb548e,
-    .minimum_zig_version = "0.14.1",
+    .minimum_zig_version = "0.15.1",
 
     .dependencies = .{
         .lightmix_wav = .{ .path = "../.." },
