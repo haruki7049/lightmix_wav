@@ -1,0 +1,17 @@
+.{
+    .name = .writer,
+    .version = "0.0.0",
+    .fingerprint = 0x97a0d882923a907a,
+    .minimum_zig_version = "0.15.1",
+
+    .dependencies = .{
+        .lightmix_wav = .{ .path = "../.." },
+    },
+
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "LICENSE",
+    },
+}

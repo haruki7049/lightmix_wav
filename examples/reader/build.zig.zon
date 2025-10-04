@@ -1,7 +1,7 @@
 .{
-    .name = .sine,
+    .name = .reader,
     .version = "0.0.0",
-    .fingerprint = 0xd96ef33f8fdb548e,
+    .fingerprint = 0xcc3f893c240389b4,
     .minimum_zig_version = "0.15.1",
 
     .dependencies = .{
