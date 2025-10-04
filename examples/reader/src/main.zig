@@ -14,15 +14,15 @@ pub fn main() !void {
     std.debug.print("{d}\n", .{wav_decoder.remaining()});
 
     var buf: [64]f32 = undefined;
-    var arraylist = std.ArrayList(f32).init(allocator);
-    defer arraylist.deinit();
+    var arraylist: std.array_list.Aligned(f32, null) = .empty;
+    defer arraylist.deinit(allocator);
 
     while (true) {
         // Read samples as f32. Channels are interleaved.
         const samples_read = try wav_decoder.read(f32, &buf);
 
         // < ------ Do something with samples in buf. ------ >
-        try arraylist.appendSlice(&buf);
+        try arraylist.appendSlice(allocator, &buf);
 
         if (samples_read < buf.len) {
             break;

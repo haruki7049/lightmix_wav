@@ -15,7 +15,7 @@ pub fn build(b: *std.Build) void {
 
     // Executable
     const exe = b.addExecutable(.{
-        .name = "sine",
+        .name = "writer",
         .root_module = exe_mod,
     });
     b.installArtifact(exe);
