@@ -225,12 +225,12 @@ pub fn decoder(reader: anytype) !Decoder(@TypeOf(reader)) {
 /// with type T (PCM int or IEEE float).
 pub fn Encoder(
     comptime T: type,
-    comptime file: anytype,
 ) type {
     return struct {
         const Self = @This();
 
-        file: file,
+        writer_buf: [1024]u8 = undefined,
+        writer: std.fs.File.Writer,
         fmt: FormatChunk,
         data_size: usize = 0,
 
@@ -239,6 +239,12 @@ pub fn Encoder(
             sample_rate: usize,
             channels: usize,
         ) !Self {
+            var self: Self = .{
+                .writer = undefined,
+                .fmt = undefined,
+            };
+            self.writer = f.writer(&self.writer_buf);
+
             const bits = switch (T) {
                 u8 => 8,
                 i16 => 16,
@@ -260,24 +266,24 @@ pub fn Encoder(
                 std.log.debug("bytes_per_second, {}, too large", .{bytes_per_second});
                 return error.InvalidArgument;
             }
-
-            var self = Self{
-                .file = f,
-                .fmt = .{
-                    .code = switch (T) {
-                        u8, i16, i24 => .pcm,
-                        f32 => .ieee_float,
-                        else => @compileError(bad_type),
-                    },
-                    .channels = @intCast(channels),
-                    .sample_rate = @intCast(sample_rate),
-                    .bytes_per_second = @intCast(bytes_per_second),
-                    .block_align = @intCast(channels * bits / 8),
-                    .bits = @intCast(bits),
+            
+            self.fmt = .{
+                .code = switch (T) {
+                    u8, i16, i24 => .pcm,
+                    f32 => .ieee_float,
+                    else => @compileError(bad_type),
                 },
+                .channels = @intCast(channels),
+                .sample_rate = @intCast(sample_rate),
+                .bytes_per_second = @intCast(bytes_per_second),
+                .block_align = @intCast(channels * bits / 8),
+                .bits = @intCast(bits),
             };
 
+            // Write a placeholder header first.
+            // This reserves space and moves the file cursor forward.
             try self.writeHeader();
+
             return self;
         }
 
@@ -285,9 +291,6 @@ pub fn Encoder(
         /// IEEE float. Multi-channel samples must be interleaved: samples for time `t` for all channels
         /// are written to `t * channels`.
         pub fn write(self: *Self, comptime S: type, buf: []const S) !void {
-            var buffer: [1024]u8 = undefined;
-            var writer: std.fs.File.Writer = self.file.writer(&buffer);
-
             switch (T) {
                 u8,
                 i16,
@@ -295,59 +298,49 @@ pub fn Encoder(
                 => {
                     for (buf) |x| {
                         // writeInt expects a value of the same type parameter.
-                        try writer.interface.writeInt(T, sample.convert(T, x), .little);
+                        try self.writer.interface.writeInt(T, sample.convert(T, x), .little);
                         self.data_size += @bitSizeOf(T) / 8;
                     }
                 },
                 f32 => {
                     for (buf) |x| {
                         const f: f32 = sample.convert(f32, x);
-                        try writer.interface.writeAll(std.mem.asBytes(&f));
+                        try self.writer.interface.writeAll(std.mem.asBytes(&f));
                         self.data_size += @bitSizeOf(T) / 8;
                     }
                 },
                 else => @compileError(bad_type),
             }
-
-            try writer.interface.flush();
         }
 
         fn writeHeader(self: *Self) !void {
-            try self.writeHeaderTo(self.file);
-        }
-
-        fn writeHeaderTo(self: *Self, f: anytype) !void {
-            var buffer: [1024]u8 = undefined;
-            var writer: std.fs.File.Writer = f.writer(&buffer);
-
             // Size of RIFF header + fmt id/size + fmt chunk + data id/size.
             const header_size: usize = 12 + 8 + @sizeOf(@TypeOf(self.fmt)) + 8;
+            const total_file_size = header_size + self.data_size - 8; // RIFF size field excludes "RIFF" and the size field itself.
 
             if (header_size + self.data_size > std.math.maxInt(u32)) {
                 return error.Overflow;
             }
 
-            try writer.interface.writeAll("RIFF");
-            try writer.interface.writeInt(u32, @intCast(header_size + self.data_size), .little); // Overwritten by finalize().
-            try writer.interface.writeAll("WAVE");
+            try self.writer.interface.writeAll("RIFF");
+            try self.writer.interface.writeInt(u32, @intCast(total_file_size), .little); // Overwritten by finalize().
+            try self.writer.interface.writeAll("WAVE");
 
-            try writer.interface.writeAll("fmt ");
-            try writer.interface.writeInt(u32, @sizeOf(@TypeOf(self.fmt)), .little);
+            try self.writer.interface.writeAll("fmt ");
+            try self.writer.interface.writeInt(u32, @sizeOf(@TypeOf(self.fmt)), .little);
             var fmt_buf: @TypeOf(self.fmt) = self.fmt;
-            try writer.interface.writeAll(std.mem.asBytes(&fmt_buf));
+            try self.writer.interface.writeAll(std.mem.asBytes(&fmt_buf));
 
-            try writer.interface.writeAll("data");
-            try writer.interface.writeInt(u32, @intCast(self.data_size), .little);
-
-            try writer.interface.flush();
+            try self.writer.interface.writeAll("data");
+            try self.writer.interface.writeInt(u32, @intCast(self.data_size), .little);
         }
 
         /// Must be called once writing is complete. Writes total size to file header.
         pub fn finalize(self: *Self) !void {
-            try self.file.seekTo(0);
-
-            // Create a fresh writer backed by the seekable stream so writes go at the start.
-            try self.writeHeaderTo(self.file);
+            try self.writer.interface.flush();
+            try self.writer.seekTo(0);
+            try self.writeHeader();
+            try self.writer.interface.flush();
         }
     };
 }
@@ -357,8 +350,8 @@ pub fn encoder(
     file: std.fs.File,
     sample_rate: usize,
     channels: usize,
-) !Encoder(T, @TypeOf(file)) {
-    return Encoder(T, @TypeOf(file)).init(file, sample_rate, channels);
+) !Encoder(T) {
+    return Encoder(T).init(file, sample_rate, channels);
 }
 
 // Tests (kept identical in intent). Ensure test data files and `sample.zig` exist.
