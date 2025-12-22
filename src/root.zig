@@ -223,9 +223,7 @@ pub fn decoder(reader: anytype) !Decoder(@TypeOf(reader)) {
 
 /// Encode audio samples to wav file. Must call `finalize()` once complete. Samples will be encoded
 /// with type T (PCM int or IEEE float).
-pub fn Encoder(
-    comptime T: type,
-) type {
+pub fn Encoder(bit_type: BitType) type {
     return struct {
         const Self = @This();
 
@@ -245,12 +243,11 @@ pub fn Encoder(
             };
             self.writer = f.writer(&self.writer_buf);
 
-            const bits = switch (T) {
-                u8 => 8,
-                i16 => 16,
-                i24 => 24,
-                f32 => 32,
-                else => @compileError(bad_type),
+            const bits = switch (bit_type) {
+                .u8 => 8,
+                .i16 => 16,
+                .i24 => 24,
+                .f32 => 32,
             };
 
             if (sample_rate == 0 or sample_rate > std.math.maxInt(u32)) {
@@ -266,12 +263,11 @@ pub fn Encoder(
                 std.log.debug("bytes_per_second, {}, too large", .{bytes_per_second});
                 return error.InvalidArgument;
             }
-            
+
             self.fmt = .{
-                .code = switch (T) {
-                    u8, i16, i24 => .pcm,
-                    f32 => .ieee_float,
-                    else => @compileError(bad_type),
+                .code = switch (bit_type) {
+                    .u8, .i16, .i24 => .pcm,
+                    .f32 => .ieee_float,
                 },
                 .channels = @intCast(channels),
                 .sample_rate = @intCast(sample_rate),
@@ -291,25 +287,29 @@ pub fn Encoder(
         /// IEEE float. Multi-channel samples must be interleaved: samples for time `t` for all channels
         /// are written to `t * channels`.
         pub fn write(self: *Self, comptime S: type, buf: []const S) !void {
-            switch (T) {
-                u8,
-                i16,
-                i24,
-                => {
-                    for (buf) |x| {
+            for (buf) |x| {
+                switch (bit_type) {
+                    .u8 => {
                         // writeInt expects a value of the same type parameter.
-                        try self.writer.interface.writeInt(T, sample.convert(T, x), .little);
-                        self.data_size += @bitSizeOf(T) / 8;
-                    }
-                },
-                f32 => {
-                    for (buf) |x| {
+                        try self.writer.interface.writeInt(u8, sample.convert(u8, x), .little);
+                        self.data_size += @bitSizeOf(u8) / 8;
+                    },
+                    .i16 => {
+                        // writeInt expects a value of the same type parameter.
+                        try self.writer.interface.writeInt(i16, sample.convert(i16, x), .little);
+                        self.data_size += @bitSizeOf(i16) / 8;
+                    },
+                    .i24 => {
+                        // writeInt expects a value of the same type parameter.
+                        try self.writer.interface.writeInt(i24, sample.convert(i24, x), .little);
+                        self.data_size += @bitSizeOf(i24) / 8;
+                    },
+                    .f32 => {
                         const f: f32 = sample.convert(f32, x);
                         try self.writer.interface.writeAll(std.mem.asBytes(&f));
-                        self.data_size += @bitSizeOf(T) / 8;
-                    }
-                },
-                else => @compileError(bad_type),
+                        self.data_size += @bitSizeOf(f32) / 8;
+                    },
+                }
             }
         }
 
@@ -346,13 +346,15 @@ pub fn Encoder(
 }
 
 pub fn encoder(
-    comptime T: type,
+    comptime bit_type: BitType,
     file: std.fs.File,
     sample_rate: usize,
     channels: usize,
-) !Encoder(T) {
-    return Encoder(T).init(file, sample_rate, channels);
+) !Encoder(bit_type) {
+    return Encoder(bit_type).init(file, sample_rate, channels);
 }
+
+const BitType = enum { u8, i16, i24, f32 };
 
 // Tests (kept identical in intent). Ensure test data files and `sample.zig` exist.
 test "pcm(bits=8) sample_rate=22050 channels=1" {

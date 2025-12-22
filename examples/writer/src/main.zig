@@ -13,7 +13,7 @@ pub fn main() !void {
     //var writer_buf: [1024]u8 = undefined;
     //var reader_buf: [1024]u8 = undefined;
 
-    var encoder = try lightmix_wav.encoder(i16, file, sample_rate, channels);
+    var encoder = try lightmix_wav.encoder(.f32, file, sample_rate, channels);
     try encoder.write(f32, data);
     try encoder.finalize();
 }
