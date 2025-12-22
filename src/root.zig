@@ -228,7 +228,7 @@ pub fn decoder(reader: anytype) !Decoder(@TypeOf(reader)) {
 
 /// Encode audio samples to wav file. Must call `finalize()` once complete. Samples will be encoded
 /// with type T (PCM int or IEEE float).
-pub fn Encoder(bit_type: BitType) type {
+pub fn Encoder(comptime bit_type: BitType) type {
     return struct {
         const Self = @This();
 
