@@ -89,13 +89,18 @@ pub fn Decoder(comptime InnerReaderType: type) type {
             return @intCast(self.fmt.channels);
         }
 
-        pub fn bits(self: *const Self) usize {
-            return @intCast(self.fmt.bits);
+        pub fn bits(self: *const Self) BitType {
+            return BitType.from(self.fmt.bits) catch |err| {
+                switch (err) {
+                    error.InvalidValue => @panic("InvalidValue"),
+                    error.Unsupported => @panic("Unsupported"),
+                }
+            };
         }
 
         /// Number of samples remaining.
         pub fn remaining(self: *const Self) usize {
-            const sample_size = self.bits() / 8;
+            const sample_size = self.bits().to() / 8;
             const bytes_remaining = self.data_size + self.data_start - self.counting_reader.bytes_read;
 
             std.debug.assert(bytes_remaining % sample_size == 0);
@@ -354,7 +359,51 @@ pub fn encoder(
     return Encoder(bit_type).init(file, sample_rate, channels);
 }
 
-pub const BitType = enum { u8, i16, i24, f32 };
+pub const BitType = enum {
+    u8,
+    i16,
+    i24,
+    f32,
+
+    pub fn to(self: BitType) u16 {
+        return switch (self) {
+            .u8 => 8,
+            .i16 => 16,
+            .i24 => 24,
+            .f32 => 32,
+        };
+    }
+
+    pub fn from(i: u16) Error!BitType {
+        return switch (i) {
+            0 => error.InvalidValue,
+            8 => .u8,
+            16 => .i16,
+            24 => .i24,
+            32 => .f32,
+            else => error.Unsupported,
+        };
+    }
+
+    pub const Error = error{
+        InvalidValue,
+        Unsupported,
+    };
+
+    test "from" {
+        try expectEqual(.u8, try BitType.from(8));
+        try expectEqual(.i16, try BitType.from(16));
+        try expectEqual(.i24, try BitType.from(24));
+        try expectEqual(.f32, try BitType.from(32));
+    }
+
+    test "to" {
+        try expectEqual(8, BitType.to(.u8));
+        try expectEqual(16, BitType.to(.i16));
+        try expectEqual(24, BitType.to(.i24));
+        try expectEqual(32, BitType.to(.f32));
+    }
+};
 
 // Tests (kept identical in intent). Ensure test data files and `sample.zig` exist.
 test "pcm(bits=8) sample_rate=22050 channels=1" {
@@ -364,7 +413,7 @@ test "pcm(bits=8) sample_rate=22050 channels=1" {
     var wav_decoder = try decoder(stream.reader());
     try expectEqual(@as(usize, 22050), wav_decoder.sampleRate());
     try expectEqual(@as(usize, 1), wav_decoder.channels());
-    try expectEqual(@as(usize, 8), wav_decoder.bits());
+    try expectEqual(@as(usize, 8), wav_decoder.bits().to());
     try expectEqual(@as(usize, 104676), wav_decoder.remaining());
 
     var buf: [64]f32 = undefined;
@@ -401,7 +450,7 @@ test "pcm(bits=24) sample_rate=48000 channels=1" {
     var wav_decoder = try decoder(stream.reader());
     try expectEqual(@as(usize, 48000), wav_decoder.sampleRate());
     try expectEqual(@as(usize, 1), wav_decoder.channels());
-    try expectEqual(@as(usize, 24), wav_decoder.bits());
+    try expectEqual(@as(usize, 24), wav_decoder.bits().to());
     try expectEqual(@as(usize, 508800), wav_decoder.remaining());
 
     var buf: [1]f32 = undefined;
@@ -427,7 +476,7 @@ test "pcm(bits=24) sample_rate=44100 channels=2" {
     var wav_decoder = try decoder(stream.reader());
     try expectEqual(@as(usize, 44100), wav_decoder.sampleRate());
     try expectEqual(@as(usize, 2), wav_decoder.channels());
-    try expectEqual(@as(usize, 24), wav_decoder.bits());
+    try expectEqual(@as(usize, 24), wav_decoder.bits().to());
     try expectEqual(@as(usize, 157952), wav_decoder.remaining());
 
     var buf: [1]f32 = undefined;
@@ -447,7 +496,7 @@ test "ieee_float(bits=32) sample_rate=48000 channels=2" {
     var wav_decoder = try decoder(stream.reader());
     try expectEqual(@as(usize, 48000), wav_decoder.sampleRate());
     try expectEqual(@as(usize, 2), wav_decoder.channels());
-    try expectEqual(@as(usize, 32), wav_decoder.bits());
+    try expectEqual(@as(usize, 32), wav_decoder.bits().to());
     try expectEqual(@as(usize, 592342), wav_decoder.remaining());
 
     var buf: [64]f32 = undefined;
@@ -465,7 +514,7 @@ test "ieee_float(bits=32) sample_rate=96000 channels=2" {
     var wav_decoder = try decoder(stream.reader());
     try expectEqual(@as(usize, 96000), wav_decoder.sampleRate());
     try expectEqual(@as(usize, 2), wav_decoder.channels());
-    try expectEqual(@as(usize, 32), wav_decoder.bits());
+    try expectEqual(@as(usize, 32), wav_decoder.bits().to());
     try expectEqual(@as(usize, 67744), wav_decoder.remaining());
 
     var buf: [64]f32 = undefined;
