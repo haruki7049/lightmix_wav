@@ -354,7 +354,7 @@ pub fn encoder(
     return Encoder(bit_type).init(file, sample_rate, channels);
 }
 
-const BitType = enum { u8, i16, i24, f32 };
+pub const BitType = enum { u8, i16, i24, f32 };
 
 // Tests (kept identical in intent). Ensure test data files and `sample.zig` exist.
 test "pcm(bits=8) sample_rate=22050 channels=1" {
