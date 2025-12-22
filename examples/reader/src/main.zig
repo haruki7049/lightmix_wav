@@ -10,7 +10,7 @@ pub fn main() !void {
 
     std.debug.print("{d}\n", .{wav_decoder.sampleRate()});
     std.debug.print("{d}\n", .{wav_decoder.channels()});
-    std.debug.print("{d}\n", .{wav_decoder.bits()});
+    std.debug.print("{any}\n", .{wav_decoder.bits()});
     std.debug.print("{d}\n", .{wav_decoder.remaining()});
 
     var buf: [64]f32 = undefined;
