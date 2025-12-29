@@ -1,4 +1,6 @@
 const std = @import("std");
+const root = @import("./src/root.zig");
+pub const BitType = root.BitType;
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
