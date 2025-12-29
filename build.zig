@@ -1,6 +1,10 @@
 const std = @import("std");
 const root = @import("./src/root.zig");
 pub const BitType = root.BitType;
+pub const encoder = root.encoder;
+pub const decoder = root.decoder;
+pub const Encoder = root.Encoder;
+pub const Decoder = root.Decoder;
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
