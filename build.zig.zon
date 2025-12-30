@@ -1,6 +1,6 @@
 .{
     .name = .lightmix_wav,
-    .version = "0.4.1",
+    .version = "0.5.0",
     .fingerprint = 0x8ae6dbf396ee8a20,
     .minimum_zig_version = "0.15.1",
 
