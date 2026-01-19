@@ -1,11 +1,6 @@
 # lightmix-wav
 
-A library to handle Wave file, which is used by my zig library, [lightmix](https://github.com/haruki7049/lightmix).
-
-However, [lightmix 0.14.0](https://github.com/haruki7049/lightmix/releases/tag/0.14.0) uses my zig wave library ([github.com/haruki7049/zigggwavvv](https://github.com/haruki7049/zigggwavvv)). Please also check `zigggwavvv`.
-
-```markdown
-# lightmix-wav
+A library to handle Wave file, which is used by my zig library, [lightmix](https://github.com/haruki7049/lightmix). However, [lightmix 0.14.0](https://github.com/haruki7049/lightmix/releases/tag/0.14.0) uses my zig wave library ([github.com/haruki7049/zigggwavvv](https://github.com/haruki7049/zigggwavvv)). Please also check `zigggwavvv`.
 
 Simple, efficient wav decoding + encoding in Zig.
 
@@ -21,4 +16,3 @@ zig build test
 ## Zig version
 
 0.15.1
-```
